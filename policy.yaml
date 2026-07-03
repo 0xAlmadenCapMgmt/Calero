@@ -1,0 +1,108 @@
+# Governance policy for the Coinbase agent.
+#
+# Two layers live in this file:
+#
+#   1. PLATFORM CONTROLS — guardrails on the pipeline itself (kill switch,
+#      operation allowlist, rate limit, active hours). The engine implements
+#      these directly; this file only parameterizes them.
+#
+#   2. BUSINESS RULES (`rules:`) — the actual policy-as-code artifact. Each
+#      rule is declarative data (field / op / value) evaluated generically by
+#      the engine. Adding or changing a business rule means editing THIS FILE,
+#      not the Python.
+#
+# Deny-by-default: anything not explicitly allowed here is blocked.
+
+version: 2
+agent_id: balance-reporter
+
+# Master switch. If false, every request is denied regardless of rules below.
+enabled: true
+
+# If this file exists on disk, all requests are denied immediately.
+# Lets a human halt the agent without touching code or config.
+kill_switch_file: /tmp/coinbase-agent-KILL
+
+# Operations the agent may call at all. Everything else -> DENY.
+allowed_operations:
+  - get_accounts
+  - get_account
+  - get_product
+  - get_market_trades
+  - create_order        # allowed, but constrained by the rules below
+
+# Operations that are ALWAYS denied, even if listed above (belt and suspenders).
+forbidden_operations:
+  - send                # on-chain sends / withdrawals
+  - withdraw
+  - create_transfer
+  - update_account
+  - delete_account
+
+# ---------------------------------------------------------------------------
+# Business rules. Evaluated in order against a context document of:
+#   params.*   — the request parameters as submitted
+#   derived.*  — facts the engine computes (parsed notional, daily totals)
+# Every rule that applies must pass. on_fail is `deny` or `needs_approval`;
+# deny always outranks needs_approval. A field that cannot be resolved fails
+# its rule (fail closed).
+# ---------------------------------------------------------------------------
+rules:
+  - id: allowed-products
+    applies_to: create_order
+    description: Only trade approved pairs
+    check: {field: params.product_id, op: in, value: ["BTC-USD", "ETH-USD"]}
+    on_fail: deny
+
+  - id: buy-only
+    applies_to: create_order
+    description: Accumulate-only agent; add SELL to permit selling
+    check: {field: derived.side, op: in, value: ["BUY"]}
+    on_fail: deny
+
+  - id: positive-notional
+    applies_to: create_order
+    description: Order size must parse to a positive dollar amount
+    check: {field: derived.notional_usd, op: ">", value: 0}
+    on_fail: deny
+
+  - id: per-order-cap
+    applies_to: create_order
+    description: No single order above $25
+    check: {field: derived.notional_usd, op: "<=", value: 25.00}
+    on_fail: deny
+
+  - id: daily-notional-cap
+    applies_to: create_order
+    description: Total spend per UTC day stays under $100
+    check: {field: derived.daily_notional_after, op: "<=", value: 100.00}
+    on_fail: deny
+
+  - id: daily-order-count
+    applies_to: create_order
+    description: At most 10 orders per UTC day
+    check: {field: derived.daily_order_count, op: "<", value: 10}
+    on_fail: deny
+
+  - id: human-approval-threshold
+    applies_to: create_order
+    description: Orders above $10 need a human-minted approval token
+    check: {field: derived.notional_usd, op: "<=", value: 10.00}
+    on_fail: needs_approval
+
+# Human approval tokens (minted out-of-band, HMAC-signed, single-use).
+approvals:
+  token_ttl_seconds: 900   # tokens expire 15 minutes after minting
+
+# Simple rate limit across ALL operations.
+rate_limit:
+  max_requests_per_minute: 30
+
+# Only allow activity during these UTC hours (inclusive start, exclusive end).
+# Remove this block to allow 24/7 operation.
+active_hours_utc:
+  start: 13   # 6am Pacific
+  end: 23     # 4pm Pacific
+
+audit:
+  log_file: audit.log.jsonl

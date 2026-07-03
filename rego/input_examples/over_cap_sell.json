@@ -1,0 +1,11 @@
+{
+  "operation": "create_order",
+  "params": {"product_id": "BTC-USD", "side": "SELL", "quote_size": "50.00"},
+  "derived": {
+    "notional_usd": 50.0,
+    "side": "SELL",
+    "daily_notional_after": 50.0,
+    "daily_order_count": 0
+  },
+  "approval": {"valid": false}
+}

@@ -1,0 +1,11 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime artifacts
+audit.log.jsonl
+
+# Local tool settings
+.claude/
