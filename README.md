@@ -41,6 +41,10 @@ A runnable demonstration using a mock Coinbase client, so it executes safely wit
 
 The other half of the policy-as-code pitch: because policies are data judged by a generic engine, every guardrail can be regression-tested. The suite asserts the verdict for each platform control and business rule, the full approval-token lifecycle (missing, valid, wrong-params, replayed, expired, garbage), fail-closed behavior on unparseable order sizes, that denied orders do not consume daily budget, and that every evaluation lands in the audit log. In a real deployment this runs in CI, so a policy edit that accidentally weakens a guardrail fails the build before it reaches the agent.
 
+### alice-bob/
+
+A companion learning project: two Claude-backed personas (Alice and Bob) hold a conversation about checking, savings, and stock investments. The agents have no tools and no access to any financial system — they can only talk — and each money movement they propose is emitted as a structured intent, mapped to this project's `Request(operation, params)` shape, and judged live by the `PolicyEngine` against `policy.yaml` (Bob's $500 NVDA idea gets denied by the product allowlist; his $5 bitcoin buy is allowed; a $15 one needs human approval). Verdicts are printed and audited but nothing ever executes. Has its own README, requirements, and tests.
+
 ### rego/
 
 The same business rules re-implemented in Rego for Open Policy Agent, with native `opa test` unit tests, sample inputs for `opa eval`, and a README comparing the two forms and describing when to graduate from a homegrown engine to OPA. Nothing in the main project requires the `opa` binary.
