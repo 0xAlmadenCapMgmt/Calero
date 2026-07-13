@@ -30,6 +30,51 @@ The conversation naturally exercises the policy's controls:
 
 Even an ALLOW executes nothing — there is no client behind the engine here. Every judgment is appended to the parent's `audit.log.jsonl`, so a full run leaves the same audit trail a governed production agent would. (The engine is loaded with the active-hours rule dropped in memory, as in the parent's `demo.py`, so the demo runs at any hour; `policy.yaml` is untouched.)
 
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph CONV["alice-bob/dialogue.py — conversation layer"]
+        CLAUDE["Claude API (claude-opus-4-8)<br/>returns Turn: message + intents"]
+        ALICE["Alice — PersonaAgent<br/>cautious planner"]
+        BOB["Bob — PersonaAgent<br/>risk-tolerant persona"]
+        MAP["intent_to_request()<br/>maps intent to Request shape"]
+        ALICE --> CLAUDE
+        BOB --> CLAUDE
+        ALICE <-->|"spoken message only"| BOB
+        ALICE -- intents --> MAP
+        BOB -- intents --> MAP
+    end
+
+    subgraph GOV["Calero root — governance layer"]
+        POLICY["policy.yaml<br/>declarative rules"]
+        ENGINE["PolicyEngine<br/>evaluate(request)"]
+        AUDIT["audit.log.jsonl<br/>append-only log"]
+        ALLOW(["ALLOW"])
+        NEEDS(["NEEDS_APPROVAL"])
+        DENY(["DENY"])
+        EXEC["GovernedClient → Coinbase<br/>no code path from the agents"]
+        POLICY --> ENGINE
+        ENGINE --> AUDIT
+        ENGINE --> ALLOW
+        ENGINE --> NEEDS
+        ENGINE --> DENY
+    end
+
+    MAP -- "Request(operation, params)" --> ENGINE
+
+    classDef verdictAllow fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    classDef verdictNeeds fill:#FAEEDA,stroke:#854F0B,color:#412402
+    classDef verdictDeny fill:#FCEBEB,stroke:#A32D2D,color:#501313
+    classDef isolated fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A,stroke-dasharray: 4 4
+    class ALLOW verdictAllow
+    class NEEDS verdictNeeds
+    class DENY verdictDeny
+    class EXEC isolated
+```
+
+Reading the map: only spoken text crosses between the personas — the structured internals stay private to each side. Intents funnel through `intent_to_request()` into the governance layer, where the `PolicyEngine` judges them against `policy.yaml` and logs every decision. The dashed `GovernedClient → Coinbase` box is the execution path from the root project, and nothing connects to it — even an `ALLOW` verdict only gets printed. Wiring allowed intents into `GovernedClient.call()` is the intended next step of the learning progression.
+
 ## Running it
 
 ```sh
