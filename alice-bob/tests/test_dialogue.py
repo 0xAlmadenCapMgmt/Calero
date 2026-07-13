@@ -101,7 +101,7 @@ def test_describe_intent_names_the_operation():
 @pytest.fixture()
 def engine_and_request():
     engine, request_cls = load_policy_engine()
-    assert engine is not None, "parent policy_engine.py / policy.yaml not found"
+    assert engine is not None, "parent core / adapters/coinbase/policy.yaml not found"
     return engine, request_cls
 
 

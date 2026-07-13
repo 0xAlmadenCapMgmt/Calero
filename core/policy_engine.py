@@ -1,7 +1,7 @@
 """
-Policy-as-code engine for the Coinbase agent.
+Platform-agnostic policy-as-code engine.
 
-Every request the agent wants to make is expressed as a Request and passed to
+Every request an agent wants to make is expressed as a Request and passed to
 PolicyEngine.evaluate(). The engine returns a Decision (ALLOW / DENY /
 NEEDS_APPROVAL) with a reason, and writes every decision to an append-only
 JSONL audit log.
@@ -9,13 +9,17 @@ JSONL audit log.
 Design principles:
   * Deny by default — an operation must be explicitly allowed.
   * Forbidden list beats allowed list.
-  * Business rules are declarative data in policy.yaml, evaluated generically;
+  * Business rules are declarative data in a policy file, evaluated generically;
     the engine supplies a context document (params + derived facts) and judges
     the request against it. Platform controls (kill switch, allowlist, rate
     limit, active hours) are engine built-ins parameterized by the policy.
   * Fail closed — a rule whose field can't be resolved or whose operator is
     unknown counts as failed.
-  * The engine never calls Coinbase itself; it only judges requests.
+  * The engine holds no platform knowledge. The `derived.*` facts a policy's
+    rules reference are computed by a pluggable Adapter (see adapter.py); the
+    default NullAdapter supplies none, so the core runs standalone on
+    params-only policies. The engine only ever judges requests — it never calls
+    any downstream API itself.
 """
 
 from __future__ import annotations
@@ -33,6 +37,8 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 import yaml
+
+from .adapter import Adapter, NullAdapter
 
 
 class Verdict(str, Enum):
@@ -79,10 +85,15 @@ class PolicyEngine:
     def __init__(
         self,
         policy: Union[str, Path, dict],
+        adapter: Optional[Adapter] = None,
         approval_secret: Optional[str] = None,
         overrides: Optional[dict] = None,
     ):
         """policy is a path to a YAML file or an already-loaded dict.
+
+        adapter supplies the platform-specific `derived.*` facts a policy's
+        rules reference (see adapter.py). Defaults to NullAdapter, which
+        supplies none — enough to run a params-only policy with no domain code.
 
         overrides lets callers (demos, tests) tweak the loaded policy without
         writing a modified file: keys replace top-level policy entries, and a
@@ -100,10 +111,9 @@ class PolicyEngine:
             else:
                 self.policy[key] = value
 
+        self.adapter: Adapter = adapter or NullAdapter()
         self._lock = threading.Lock()
         self._request_timestamps: list[dt.datetime] = []   # for rate limiting
-        self._daily_notional: dict[str, float] = {}        # date -> USD spent
-        self._daily_orders: dict[str, int] = {}            # date -> order count
         self._consumed_nonces: set[str] = set()            # spent approval tokens
         # Secret used to mint/verify human approval tokens.
         self._approval_secret = approval_secret or os.environ.get(
@@ -239,14 +249,10 @@ class PolicyEngine:
                 )
             consumed_nonce = nonce
 
-        # Request passes: commit state so subsequent evaluations see it.
-        if req.operation == "create_order":
-            today = self._today()
-            notional = context["derived"].get("notional_usd") or 0.0
-            self._daily_notional[today] = (
-                self._daily_notional.get(today, 0.0) + notional
-            )
-            self._daily_orders[today] = self._daily_orders.get(today, 0) + 1
+        # Request passes: commit state so subsequent evaluations see it. The
+        # adapter advances any domain accumulators (running daily totals); the
+        # engine records the spent approval nonce (generic replay defense).
+        self.adapter.commit(req, context)
         if consumed_nonce:
             self._consumed_nonces.add(consumed_nonce)
 
@@ -260,24 +266,12 @@ class PolicyEngine:
         """Assemble the facts rules are judged against.
 
         `params` is the request as submitted; `derived` holds facts the
-        engine computes (parsed notional, running daily totals). Rules
-        reference these with dotted paths like `derived.notional_usd`.
+        adapter computes for this platform (e.g. a parsed amount, running daily
+        totals). Rules reference these with dotted paths like
+        `derived.notional_usd`. With the default NullAdapter, `derived` is
+        empty and rules may only reference `params.*`.
         """
-        derived: dict[str, Any] = {}
-        if req.operation == "create_order":
-            derived["side"] = str(req.params.get("side", "")).upper()
-            try:
-                derived["notional_usd"] = float(
-                    req.params.get("quote_size", req.params.get("notional_usd"))
-                )
-            except (TypeError, ValueError):
-                derived["notional_usd"] = None   # unresolvable -> rules fail closed
-            today = self._today()
-            spent = self._daily_notional.get(today, 0.0)
-            if derived["notional_usd"] is not None:
-                derived["daily_notional_after"] = spent + derived["notional_usd"]
-            derived["daily_order_count"] = self._daily_orders.get(today, 0)
-        return {"params": dict(req.params), "derived": derived}
+        return {"params": dict(req.params), "derived": self.adapter.derive(req)}
 
     @staticmethod
     def _rule_applies(rule: dict, operation: str) -> bool:
@@ -347,10 +341,6 @@ class PolicyEngine:
     # ------------------------------------------------------------------ #
     #  Helpers
     # ------------------------------------------------------------------ #
-
-    @staticmethod
-    def _today() -> str:
-        return dt.datetime.now(dt.timezone.utc).date().isoformat()
 
     def _audit(self, d: Decision) -> None:
         entry = {

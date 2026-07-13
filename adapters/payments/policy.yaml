@@ -1,0 +1,92 @@
+# Governance policy for a payments/payouts agent (Stripe/bank-style API).
+#
+# Same two layers as every Calero policy:
+#   1. PLATFORM CONTROLS — kill switch, operation allow/forbid lists, rate
+#      limit, active hours. Implemented by the core engine, parameterized here.
+#   2. BUSINESS RULES (`rules:`) — declarative field/op/value checks judged
+#      against params.* (as submitted) and derived.* (computed by the
+#      PaymentsAdapter: amount_usd, running daily payout totals).
+#
+# Deny-by-default: anything not explicitly allowed here is blocked.
+
+version: 2
+agent_id: payouts-agent
+
+enabled: true
+
+# Touch this file to freeze the agent instantly, no code or config change.
+kill_switch_file: /tmp/payments-agent-KILL
+
+# Operations the agent may call at all. Everything else -> DENY.
+allowed_operations:
+  - get_balance
+  - list_payouts
+  - create_payout        # allowed, but constrained by the rules below
+  - create_refund        # allowed, but constrained by the rules below
+
+# Always denied, even if listed above (belt and suspenders). Payouts may only
+# go to pre-vetted destinations (see allowed-destinations); opening a brand-new
+# account or moving money by raw transfer is never the agent's job.
+forbidden_operations:
+  - create_transfer
+  - create_payout_to_new_account
+  - delete_account
+  - update_account
+
+# ---------------------------------------------------------------------------
+# Business rules. Every applicable rule must pass; on_fail is `deny` or
+# `needs_approval` (deny outranks). A field that can't be resolved fails closed.
+# ---------------------------------------------------------------------------
+rules:
+  - id: allowed-destinations
+    applies_to: create_payout
+    description: Payouts only to pre-approved recipients
+    check: {field: params.destination, op: in, value: ["acct_payroll", "acct_vendor_aws", "acct_vendor_gsuite"]}
+    on_fail: deny
+
+  - id: positive-amount
+    applies_to: [create_payout, create_refund]
+    description: Amount must parse to a positive dollar figure
+    check: {field: derived.amount_usd, op: ">", value: 0}
+    on_fail: deny
+
+  - id: per-payout-cap
+    applies_to: create_payout
+    description: No single payout above $500
+    check: {field: derived.amount_usd, op: "<=", value: 500.00}
+    on_fail: deny
+
+  - id: daily-payout-cap
+    applies_to: create_payout
+    description: Total payouts per UTC day stay under $2000
+    check: {field: derived.daily_payout_after, op: "<=", value: 2000.00}
+    on_fail: deny
+
+  - id: daily-payout-count
+    applies_to: create_payout
+    description: At most 20 payouts per UTC day
+    check: {field: derived.daily_payout_count, op: "<", value: 20}
+    on_fail: deny
+
+  - id: per-refund-cap
+    applies_to: create_refund
+    description: No single refund above $100
+    check: {field: derived.amount_usd, op: "<=", value: 100.00}
+    on_fail: deny
+
+  - id: payout-approval-threshold
+    applies_to: create_payout
+    description: Payouts above $200 need a human-minted approval token
+    check: {field: derived.amount_usd, op: "<=", value: 200.00}
+    on_fail: needs_approval
+
+# Human approval tokens (minted out-of-band, HMAC-signed, single-use).
+approvals:
+  token_ttl_seconds: 900
+
+# Simple rate limit across ALL operations.
+rate_limit:
+  max_requests_per_minute: 30
+
+audit:
+  log_file: audit.log.jsonl

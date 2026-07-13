@@ -8,9 +8,9 @@ project.
 
 Alongside each spoken reply, an agent emits zero or more structured
 *intents*: money movements it says it wants to make. Intents are printed
-but never executed. They are shaped to match the parent project's
-policy_engine.Request(operation, params) so a future step can submit them
-to PolicyEngine.evaluate() — see intent_to_request().
+but never executed. They are shaped to match the parent core's
+Request(operation, params) so a future step can submit them to
+PolicyEngine.evaluate() — see intent_to_request().
 
 Usage:
     python dialogue.py                # 6 exchanges with claude-opus-4-8
@@ -69,13 +69,13 @@ class Turn(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Governance foreshadowing: Intent -> policy_engine.Request shape
+# Governance foreshadowing: Intent -> core Request shape
 # ---------------------------------------------------------------------------
 
 # intent_to_request stays a pure function producing a plain dict shaped like
-# policy_engine.Request ({"operation": ..., "params": {...}}), so the mapping
-# is testable offline. load_policy_engine() imports the parent project's
-# engine at runtime and every intent is judged against its policy.yaml.
+# the core's Request ({"operation": ..., "params": {...}}), so the mapping is
+# testable offline. load_policy_engine() imports the parent core and Coinbase
+# adapter at runtime and every intent is judged against the Coinbase policy.yaml.
 
 # Personas talk in bare tickers ("BTC"); the parent policy allowlists
 # exchange products ("BTC-USD").
@@ -109,7 +109,7 @@ def intent_to_request(intent: Intent) -> dict:
 
 
 def load_policy_engine():
-    """Import the parent project's PolicyEngine and load its policy.yaml.
+    """Import the parent Calero core and load the Coinbase adapter + policy.
 
     Returns (engine, Request class), or (None, None) when the subproject is
     run outside the Calero repo — intents are then printed unjudged.
@@ -117,15 +117,17 @@ def load_policy_engine():
     so the conversation can run at any time of day.
     """
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if not os.path.exists(os.path.join(root, "policy.yaml")):
+    policy = os.path.join(root, "adapters", "coinbase", "policy.yaml")
+    if not os.path.exists(policy):
         return None, None
     sys.path.insert(0, root)
     try:
-        from policy_engine import PolicyEngine, Request
+        from core import PolicyEngine, Request
+        from adapters.coinbase import CoinbaseAdapter
     except ImportError:
         return None, None
     engine = PolicyEngine(
-        os.path.join(root, "policy.yaml"), overrides={"active_hours_utc": None}
+        policy, adapter=CoinbaseAdapter(), overrides={"active_hours_utc": None}
     )
     return engine, Request
 

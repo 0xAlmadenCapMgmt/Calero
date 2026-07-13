@@ -1,9 +1,26 @@
-"""Demonstrates the governance layer using a mock Coinbase client."""
+"""Demonstrates the governance layer using a mock Coinbase client.
+
+Run from the repo root as a module:  python -m adapters.coinbase.demo
+or directly:                          python adapters/coinbase/demo.py
+"""
 
 import os
+import sys
+from pathlib import Path
 
-from governed_client import ApprovalRequired, GovernedClient, PolicyViolation
-from policy_engine import PolicyEngine
+# Allow direct execution (python adapters/coinbase/demo.py) by putting the repo
+# root on the path so `core` and `adapters` import as packages.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from core import ApprovalRequired, GovernedClient, PolicyEngine, PolicyViolation
+
+from adapters.coinbase import CoinbaseAdapter
+
+_HERE = Path(__file__).resolve().parent
+POLICY = _HERE / "policy.yaml"
+AUDIT_LOG = _HERE / "audit.log.jsonl"
 
 
 class MockCoinbase:
@@ -35,7 +52,9 @@ if __name__ == "__main__":
     # Drop the active-hours rule for the demo so every other rule can fire
     # regardless of when it is run. `overrides` tweaks the loaded policy in
     # memory; policy.yaml itself is untouched.
-    engine = PolicyEngine("policy.yaml", overrides={"active_hours_utc": None})
+    engine = PolicyEngine(
+        POLICY, adapter=CoinbaseAdapter(), overrides={"active_hours_utc": None}
+    )
     client = GovernedClient(MockCoinbase(), engine)
 
     print("1. Read balance (allowed op):")
@@ -76,7 +95,7 @@ if __name__ == "__main__":
     print("\n9. Unknown operation (deny by default):")
     attempt("delete_everything", lambda: client.call("delete_everything"))
 
-    print("\nAudit trail written to audit.log.jsonl:")
-    with open("audit.log.jsonl") as f:
+    print(f"\nAudit trail written to {AUDIT_LOG.name}:")
+    with open(AUDIT_LOG) as f:
         for line in f.readlines()[-3:]:
             print("  " + line.strip())

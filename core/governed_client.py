@@ -1,14 +1,15 @@
 """
 GovernedClient: the ONLY object the agent is given.
 
-It wraps the real Coinbase client and routes every call through the
-PolicyEngine first. The agent never holds the raw client or the API key,
-so it cannot bypass governance.
+It wraps the real downstream client (Coinbase, a payments API, anything with
+callable methods) and routes every call through the PolicyEngine first. The
+agent never holds the raw client or its credentials, so it cannot bypass
+governance — enforcement is structural, not merely a rule the agent is asked
+to follow.
 
 Usage:
-    from coinbase.rest import RESTClient
-    raw = RESTClient(api_key=..., api_secret=...)
-    client = GovernedClient(raw, "policy.yaml")
+    raw = SomeVendorClient(api_key=..., api_secret=...)
+    client = GovernedClient(raw, PolicyEngine("policy.yaml", adapter=SomeAdapter()))
 
     client.call("get_accounts")                      # -> ALLOW, executes
     client.call("send", {"to": "0xabc..."})          # -> PolicyViolation
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-from policy_engine import Decision, PolicyEngine, Request, Verdict
+from .policy_engine import Decision, PolicyEngine, Request, Verdict
 
 
 class PolicyViolation(Exception):
@@ -40,9 +41,11 @@ class GovernedClient:
         raw_client: Any,
         policy: Union[str, PolicyEngine],
     ):
-        """policy is a path to a policy.yaml or an already-built PolicyEngine
-        (useful when the caller needs the same engine to mint approval tokens
-        or apply overrides)."""
+        """policy is a path to a policy.yaml or an already-built PolicyEngine.
+        Pass a PolicyEngine when the platform needs an Adapter (most do), or
+        when the caller needs the same engine to mint approval tokens or apply
+        overrides. A bare path builds an engine with the default NullAdapter,
+        which only supports params-only policies."""
         self._raw = raw_client
         self.engine = (
             policy if isinstance(policy, PolicyEngine) else PolicyEngine(policy)

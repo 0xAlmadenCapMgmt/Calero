@@ -1,6 +1,11 @@
-"""Unit tests for the policy engine — the "policies are testable" half of
-the policy-as-code pitch. Every rule's verdict is asserted here, so a policy
-change that weakens a guardrail fails CI before it reaches the agent."""
+"""Tests for the Coinbase adapter: the business rules it enables and the
+`derived.*` facts it computes (order side, parsed notional, running daily
+totals). Platform controls and the generic approval-token lifecycle are covered
+once, platform-independently, in test_core.py; here we exercise what the
+CoinbaseAdapter adds on top of the core.
+
+Because policies are data judged by a generic engine, a policy edit that
+weakens a guardrail fails these tests before it ever reaches the agent."""
 
 import sys
 from pathlib import Path
@@ -9,14 +14,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from policy_engine import PolicyEngine, Request, Verdict  # noqa: E402
+from core import PolicyEngine, Request, Verdict  # noqa: E402
+
+from adapters.coinbase import CoinbaseAdapter  # noqa: E402
 
 SECRET = "test-secret"
 
 
 def base_policy(tmp_path):
-    """A self-contained policy dict mirroring policy.yaml, minus active
-    hours (so tests are time-independent) and with tmp paths."""
+    """A self-contained policy mirroring adapters/coinbase/policy.yaml, minus
+    active hours (so tests are time-independent) and with tmp paths."""
     return {
         "version": 2,
         "agent_id": "test-agent",
@@ -103,7 +110,9 @@ def base_policy(tmp_path):
 
 @pytest.fixture
 def engine(tmp_path):
-    return PolicyEngine(base_policy(tmp_path), approval_secret=SECRET)
+    return PolicyEngine(
+        base_policy(tmp_path), adapter=CoinbaseAdapter(), approval_secret=SECRET
+    )
 
 
 def order(quote_size, product="BTC-USD", side="BUY", token=None):
@@ -115,61 +124,7 @@ def order(quote_size, product="BTC-USD", side="BUY", token=None):
 
 
 # --------------------------------------------------------------------- #
-#  Platform controls
-# --------------------------------------------------------------------- #
-
-def test_allowed_read_op(engine):
-    assert engine.evaluate(Request("get_accounts")).verdict is Verdict.ALLOW
-
-
-def test_forbidden_op_denied(engine):
-    d = engine.evaluate(Request("send", {"to": "0xabc"}))
-    assert d.verdict is Verdict.DENY
-    assert "forbidden" in d.reason
-
-
-def test_unknown_op_denied_by_default(engine):
-    d = engine.evaluate(Request("delete_everything"))
-    assert d.verdict is Verdict.DENY
-    assert "allowed_operations" in d.reason
-
-
-def test_forbidden_beats_allowed(tmp_path):
-    policy = base_policy(tmp_path)
-    policy["allowed_operations"].append("send")
-    eng = PolicyEngine(policy, approval_secret=SECRET)
-    assert eng.evaluate(Request("send")).verdict is Verdict.DENY
-
-
-def test_kill_switch(engine, tmp_path):
-    (tmp_path / "KILL").touch()
-    d = engine.evaluate(Request("get_accounts"))
-    assert d.verdict is Verdict.DENY
-    assert "kill switch" in d.reason
-
-
-def test_disabled_policy(tmp_path):
-    eng = PolicyEngine(
-        base_policy(tmp_path), approval_secret=SECRET, overrides={"enabled": False}
-    )
-    assert eng.evaluate(Request("get_accounts")).verdict is Verdict.DENY
-
-
-def test_rate_limit(tmp_path):
-    eng = PolicyEngine(
-        base_policy(tmp_path),
-        approval_secret=SECRET,
-        overrides={"rate_limit": {"max_requests_per_minute": 3}},
-    )
-    for _ in range(3):
-        assert eng.evaluate(Request("get_accounts")).verdict is Verdict.ALLOW
-    d = eng.evaluate(Request("get_accounts"))
-    assert d.verdict is Verdict.DENY
-    assert "rate limit" in d.reason
-
-
-# --------------------------------------------------------------------- #
-#  Business rules
+#  Business rules (need the adapter's derived facts)
 # --------------------------------------------------------------------- #
 
 def test_small_buy_allowed(engine):
@@ -210,7 +165,7 @@ def test_daily_notional_cap(tmp_path):
     for rule in policy["rules"]:
         if rule["id"] == "daily-notional-cap":
             rule["check"]["value"] = 15.00
-    eng = PolicyEngine(policy, approval_secret=SECRET)
+    eng = PolicyEngine(policy, adapter=CoinbaseAdapter(), approval_secret=SECRET)
     assert eng.evaluate(order(10)).verdict is Verdict.ALLOW
     d = eng.evaluate(order(10))   # would push daily total to $20 > $15
     assert d.verdict is Verdict.DENY
@@ -232,7 +187,7 @@ def test_denied_order_does_not_consume_budget(engine):
 
 
 # --------------------------------------------------------------------- #
-#  Human approval flow
+#  Approval gate keyed on the derived notional
 # --------------------------------------------------------------------- #
 
 def test_over_threshold_needs_approval(engine):
@@ -244,48 +199,16 @@ def test_over_threshold_needs_approval(engine):
 def test_valid_token_allows(engine):
     req = order(15)
     token = engine.mint_approval_token(req.operation, req.params)
-    d = engine.evaluate(order(15, token=token))
-    assert d.verdict is Verdict.ALLOW
-
-
-def test_token_bound_to_exact_params(engine):
-    req = order(15)
-    token = engine.mint_approval_token(req.operation, req.params)
-    d = engine.evaluate(order(20, token=token))   # different amount
-    assert d.verdict is Verdict.DENY
-    assert "invalid signature" in d.reason
-
-
-def test_token_single_use(engine):
-    req = order(15)
-    token = engine.mint_approval_token(req.operation, req.params)
     assert engine.evaluate(order(15, token=token)).verdict is Verdict.ALLOW
-    d = engine.evaluate(order(15, token=token))
-    assert d.verdict is Verdict.DENY
-    assert "already used" in d.reason
-
-
-def test_expired_token(engine):
-    req = order(15)
-    token = engine.mint_approval_token(req.operation, req.params, ttl_seconds=-1)
-    d = engine.evaluate(order(15, token=token))
-    assert d.verdict is Verdict.NEEDS_APPROVAL
-    assert "expired" in d.reason
-
-
-def test_garbage_token_denied(engine):
-    d = engine.evaluate(order(15, token="not-a-real-token"))
-    assert d.verdict is Verdict.DENY
-    assert "invalid signature" in d.reason
 
 
 # --------------------------------------------------------------------- #
 #  Audit log
 # --------------------------------------------------------------------- #
 
-def test_every_evaluation_audited(engine, tmp_path):
+def test_orders_are_audited(engine, tmp_path):
     engine.evaluate(Request("get_accounts"))
-    engine.evaluate(Request("send"))
+    engine.evaluate(order(5))
     engine.evaluate(order(50))
     lines = (tmp_path / "audit.jsonl").read_text().strip().splitlines()
     assert len(lines) == 3

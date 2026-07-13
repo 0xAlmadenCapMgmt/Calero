@@ -1,11 +1,11 @@
 # A Security Primer for Agent Governance Layers
 
 This document is use-case agnostic. The examples reference this repository's
-Coinbase trading layer because it is concrete and nearby, but every principle
-here applies equally to an agent that pays bills, moves money between
-accounts, files tickets, sends email, or deploys code. If an autonomous
-system holds a credential and takes actions, this is the threat model it
-lives in.
+adapters — the Coinbase trading layer and the payments layer — because they
+are concrete and nearby, but every principle here applies equally to an agent
+that pays bills, moves money between accounts, files tickets, sends email, or
+deploys code. If an autonomous system holds a credential and takes actions,
+this is the threat model it lives in.
 
 ## 1. Why agents change the security problem
 
