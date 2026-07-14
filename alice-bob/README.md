@@ -46,15 +46,17 @@ flowchart TB
         BOB -- intents --> MAP
     end
 
-    subgraph GOV["Calero root — governance layer"]
-        POLICY["policy.yaml<br/>declarative rules"]
-        ENGINE["PolicyEngine<br/>evaluate(request)"]
+    subgraph GOV["Calero — platform-agnostic core + Coinbase adapter"]
+        POLICY["adapters/coinbase/policy.yaml<br/>declarative rules"]
+        ADAPTER["CoinbaseAdapter.derive()<br/>side, notional, daily totals"]
+        ENGINE["core.PolicyEngine<br/>evaluate(request)"]
         AUDIT["audit.log.jsonl<br/>append-only log"]
         ALLOW(["ALLOW"])
         NEEDS(["NEEDS_APPROVAL"])
         DENY(["DENY"])
-        EXEC["GovernedClient → Coinbase<br/>no code path from the agents"]
+        EXEC["core.GovernedClient → Coinbase<br/>no code path from the agents"]
         POLICY --> ENGINE
+        ADAPTER -- "derived.* facts" --> ENGINE
         ENGINE --> AUDIT
         ENGINE --> ALLOW
         ENGINE --> NEEDS
@@ -73,7 +75,7 @@ flowchart TB
     class EXEC isolated
 ```
 
-Reading the map: only spoken text crosses between the personas — the structured internals stay private to each side. Intents funnel through `intent_to_request()` into the governance layer, where the `PolicyEngine` judges them against `policy.yaml` and logs every decision. The dashed `GovernedClient → Coinbase` box is the execution path from the root project, and nothing connects to it — even an `ALLOW` verdict only gets printed. Wiring allowed intents into `GovernedClient.call()` is the intended next step of the learning progression.
+Reading the map: only spoken text crosses between the personas — the structured internals stay private to each side. Intents funnel through `intent_to_request()` into the governance layer, where the platform-agnostic `core.PolicyEngine` judges them against `adapters/coinbase/policy.yaml`, drawing the `derived.*` facts (order side, notional, running daily totals) from the `CoinbaseAdapter`, and logs every decision. The dashed `core.GovernedClient → Coinbase` box is the execution path from the root project, and nothing connects to it — even an `ALLOW` verdict only gets printed. Wiring allowed intents into `GovernedClient.call()` is the intended next step of the learning progression.
 
 ## Running it
 

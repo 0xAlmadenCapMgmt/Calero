@@ -20,6 +20,43 @@ adapters/
 alice-bob/                companion demo: two agents talk, the engine judges intent
 ```
 
+```mermaid
+flowchart TB
+    AGENT["Agent / script<br/>holds only the GovernedClient"]
+
+    subgraph CORE["core/ — platform-agnostic, identical across platforms"]
+        GC["GovernedClient.call(op, params)<br/>enforcement point (PEP)"]
+        ENGINE["PolicyEngine.evaluate()<br/>deny-by-default · approval tokens · audit (PDP)"]
+        GC --> ENGINE
+    end
+
+    subgraph PLAT["per-platform configuration — swap these, not the core"]
+        POLICY["policy.yaml<br/>allow / forbid lists + declarative rules"]
+        subgraph ADAPTERS["Adapter (pluggable): derive() + commit()"]
+            CB["CoinbaseAdapter"]
+            PAY["PaymentsAdapter"]
+            NULL["NullAdapter (default)"]
+        end
+    end
+
+    AGENT --> GC
+    POLICY --> ENGINE
+    ADAPTERS -- "derived.* facts" --> ENGINE
+    ENGINE --> ALLOW(["ALLOW → invoke downstream API"])
+    ENGINE --> NEEDS(["NEEDS_APPROVAL → surface to a human"])
+    ENGINE --> DENY(["DENY → PolicyViolation"])
+    ENGINE --> AUDIT["audit.log.jsonl<br/>append-only, every decision"]
+
+    classDef verdictAllow fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    classDef verdictNeeds fill:#FAEEDA,stroke:#854F0B,color:#412402
+    classDef verdictDeny fill:#FCEBEB,stroke:#A32D2D,color:#501313
+    class ALLOW verdictAllow
+    class NEEDS verdictNeeds
+    class DENY verdictDeny
+```
+
+Reading the map: the agent holds only the `GovernedClient`, so every action must pass through `PolicyEngine.evaluate()` — bypassing governance is structurally impossible. The two boxes in `core/` never change; a new platform swaps in its own `policy.yaml` and `Adapter`, which is the only place `derived.*` facts (parsed amounts, running daily totals) come from. The default `NullAdapter` supplies none, so the core runs standalone on params-only policies. Only an `ALLOW` reaches the downstream API; every verdict is appended to the audit log.
+
 **The core** knows how to run declarative rules (`field` / `op` / `value`) against a context document of `params.*` (the request as submitted) and `derived.*` (facts computed for the request), enforce deny-by-default with a forbidden list that beats the allowed list, apply platform controls (kill switch, rate limit, active hours), verify HMAC human-approval tokens, and audit every decision. None of that is platform-specific.
 
 **An adapter** supplies the one piece of domain knowledge the core lacks: the `derived.*` facts a policy's rules reference, plus any running accumulators (daily spend, counts). The contract is two methods — `derive(request)` (side-effect free; computes the facts) and `commit(request, context)` (called only after an ALLOW; advances the accumulators, so denied attempts never consume budget). See `core/adapter.py`.
