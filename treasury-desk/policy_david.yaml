@@ -1,0 +1,94 @@
+# Governance policy for David — the Fund Manager agent.
+#
+# David invests capital received from Catherine via a market venue, and may
+# return capital ONLY to Catherine. He can reach no other counterparty: the
+# return-counterparty rule enforces it in policy, and structurally he is never
+# handed any client but his own (see agents.py).
+#
+# Two operations are governed. create_order (invest) derives trading facts like
+# the Coinbase adapter; return_funds derives the return amount. Counterparty
+# rules are pure params.* checks.
+
+version: 2
+agent_id: david-fund-manager
+
+enabled: true
+kill_switch_file: /tmp/david-fund-KILL
+
+allowed_operations:
+  - get_balance
+  - create_order        # invest via the market venue
+  - return_funds        # return capital to Catherine
+
+# David is a fund manager, not a payer: he cannot send or withdraw to anyone.
+# Returning capital happens only through the governed return_funds path.
+forbidden_operations:
+  - send
+  - withdraw
+  - create_transfer
+
+rules:
+  # --- investing -------------------------------------------------------- #
+  - id: allowed-products
+    applies_to: create_order
+    description: Only trade approved products
+    check: {field: params.product_id, op: in, value: ["BTC-USD", "ETH-USD"]}
+    on_fail: deny
+
+  - id: buy-only
+    applies_to: create_order
+    description: Fund accumulates; selling is out of scope for this desk
+    check: {field: derived.side, op: in, value: ["BUY"]}
+    on_fail: deny
+
+  - id: positive-notional
+    applies_to: create_order
+    description: Order size must parse to a positive dollar amount
+    check: {field: derived.notional_usd, op: ">", value: 0}
+    on_fail: deny
+
+  - id: per-order-cap
+    applies_to: create_order
+    description: No single investment above $1000
+    check: {field: derived.notional_usd, op: "<=", value: 1000.00}
+    on_fail: deny
+
+  - id: daily-notional-cap
+    applies_to: create_order
+    description: Total invested per UTC day stays under $2000
+    check: {field: derived.daily_notional_after, op: "<=", value: 2000.00}
+    on_fail: deny
+
+  # --- returning capital ------------------------------------------------ #
+  - id: return-counterparty-allowlist
+    applies_to: return_funds
+    description: Capital may only be returned to the treasury (Catherine)
+    check: {field: params.to, op: in, value: ["catherine"]}
+    on_fail: deny
+
+  - id: positive-return
+    applies_to: return_funds
+    description: Return amount must parse to a positive dollar figure
+    check: {field: derived.amount_usd, op: ">", value: 0}
+    on_fail: deny
+
+  - id: per-return-cap
+    applies_to: return_funds
+    description: No single return above $5000
+    check: {field: derived.amount_usd, op: "<=", value: 5000.00}
+    on_fail: deny
+
+  - id: return-approval-threshold
+    applies_to: return_funds
+    description: Returns above $2000 need a human-minted approval token
+    check: {field: derived.amount_usd, op: "<=", value: 2000.00}
+    on_fail: needs_approval
+
+approvals:
+  token_ttl_seconds: 900
+
+rate_limit:
+  max_requests_per_minute: 60
+
+audit:
+  log_file: audit.log.jsonl

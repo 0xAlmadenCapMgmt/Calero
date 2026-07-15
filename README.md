@@ -18,6 +18,8 @@ adapters/
   coinbase/               reference adapter: crypto trading (create_order)
   payments/               second adapter: Stripe/bank-style payouts
 alice-bob/                companion demo: two agents talk, the engine judges intent
+treasury-desk/            executable multi-agent testbed: two agents move real
+                          (mock-ledger) funds; invariants prove nothing leaked
 ```
 
 ```mermaid
@@ -81,6 +83,13 @@ A governance layer for a Coinbase trading agent: a product allowlist (BTC-USD / 
 ### `adapters/payments/` — a second platform, same core
 
 A Stripe/bank-style payouts agent: a recipient allowlist, per-payout and daily caps, a per-refund cap, forbidden raw transfers, and an approval threshold. Amounts arrive in **cents** while the policy is written in dollars — a deliberately different param shape from Coinbase's dollar `quote_size` — showing the adapter, not the core, owns unit handling. See [adapters/payments/README.md](adapters/payments/README.md).
+
+## Demos & testbeds
+
+Two runnable scenarios show the core governing live agents, at opposite ends of the "does anything execute?" spectrum:
+
+- **`alice-bob/` — judgment.** Two Claude personas converse about money; each intent they voice is judged live by the engine, but nothing executes. It shows the layer *deciding*. See [alice-bob/README.md](alice-bob/README.md).
+- **`treasury-desk/` — enforcement.** Two governed agents — **Catherine (Treasury)** funds **David (Fund Manager)**, who invests via a market venue and returns capital — move real balances on a mock ledger. An `ALLOW` mutates the ledger; a battery of adversarial attempts (exfiltration to a stranger, over-cap sends, forbidden ops) is measured pass/fail; and post-run **invariants** prove no funds ever reached an unauthorized counterparty. This is the first scenario to model *agent-to-agent authorization* — David may transact with no one but Catherine, enforced both structurally and by a counterparty-allowlist rule that rides the engine's existing `in` operator with **no core change**. See [treasury-desk/README.md](treasury-desk/README.md).
 
 ## The core files
 

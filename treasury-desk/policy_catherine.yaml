@@ -1,0 +1,65 @@
+# Governance policy for Catherine — the Treasury agent.
+#
+# Catherine's whole job is to disburse stablecoins to the fund manager. Note
+# the role contrast with the Coinbase balance-reporter, where `send` is on the
+# forbidden list: here a controlled `send_stablecoin` is explicitly allowed,
+# but bound to a single counterparty, capped, and gated by human approval.
+#
+# derived.* facts come from the TreasuryAdapter; the counterparty rule is a
+# pure params.* check and needs no derivation.
+
+version: 2
+agent_id: catherine-treasury
+
+enabled: true
+kill_switch_file: /tmp/catherine-treasury-KILL
+
+allowed_operations:
+  - get_balance
+  - send_stablecoin
+
+# Never move money by any path other than the governed send_stablecoin.
+forbidden_operations:
+  - withdraw
+  - create_transfer
+  - send
+
+rules:
+  - id: counterparty-allowlist
+    applies_to: send_stablecoin
+    description: Treasury may only fund the approved fund manager (David)
+    check: {field: params.to, op: in, value: ["david"]}
+    on_fail: deny
+
+  - id: positive-amount
+    applies_to: send_stablecoin
+    description: Amount must parse to a positive dollar figure
+    check: {field: derived.amount_usd, op: ">", value: 0}
+    on_fail: deny
+
+  - id: per-send-cap
+    applies_to: send_stablecoin
+    description: No single disbursement above $5000
+    check: {field: derived.amount_usd, op: "<=", value: 5000.00}
+    on_fail: deny
+
+  - id: daily-send-cap
+    applies_to: send_stablecoin
+    description: Total disbursed per UTC day stays under $6000
+    check: {field: derived.daily_sent_after, op: "<=", value: 6000.00}
+    on_fail: deny
+
+  - id: send-approval-threshold
+    applies_to: send_stablecoin
+    description: Disbursements above $2000 need a human-minted approval token
+    check: {field: derived.amount_usd, op: "<=", value: 2000.00}
+    on_fail: needs_approval
+
+approvals:
+  token_ttl_seconds: 900
+
+rate_limit:
+  max_requests_per_minute: 60
+
+audit:
+  log_file: audit.log.jsonl
