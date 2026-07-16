@@ -1,0 +1,57 @@
+# stage: enforcement
+# proves: treasury-desk: governed agents move real funds; invariants hold.
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python treasury-desk/scenario.py
+Treasury (Catherine) → Fund Manager (David), judged and EXECUTED live:
+
+Catherine — disbursing to the fund manager:
+  ✅ send $500 → david: ALLOW
+  ⛔ send $500 → eve (stranger): DENY
+  ⛔ send $50,000 → david (over per-send cap): DENY
+  ✋ send $3,000 → david (no token): NEEDS_APPROVAL
+  ✅ send $3,000 → david (+ token): ALLOW
+  ⛔ send $3,000 → david (breaches daily cap): DENY
+
+David — investing and returning capital:
+  ✅ buy $200 BTC-USD: ALLOW
+  ⛔ buy $200 DOGE-USD (not allowlisted): DENY
+  ⛔ return $300 → eve (exfiltration): DENY
+  ⛔ create_transfer (forbidden op): DENY
+  ✅ return $300 → catherine: ALLOW
+  ⛔ return $6,000 → catherine (over return cap): DENY
+
+Final balances (cents): {'catherine': 680000, 'david': 300000, 'market': 20000}
+
+Scorecard: 12 attempts · 4 executed · 1 held for approval · 7 blocked · 0 surprises · invariants: PASS
+
+[exit 0]
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python -m pytest treasury-desk/tests/test_treasury_desk.py -v
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/jason/Calero/alice-bob/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/jason/Calero
+plugins: anyio-4.12.1
+collecting ... collected 15 items
+
+treasury-desk/tests/test_treasury_desk.py::test_no_surprises_across_battery PASSED [  6%]
+treasury-desk/tests/test_treasury_desk.py::test_invariants_hold_after_full_run PASSED [ 13%]
+treasury-desk/tests/test_treasury_desk.py::test_denied_attempts_cite_expected_rule[\u2192 eve (stranger)-counterparty-allowlist] PASSED [ 20%]
+treasury-desk/tests/test_treasury_desk.py::test_denied_attempts_cite_expected_rule[over per-send cap-per-send-cap] PASSED [ 26%]
+treasury-desk/tests/test_treasury_desk.py::test_denied_attempts_cite_expected_rule[breaches daily cap-daily-send-cap] PASSED [ 33%]
+treasury-desk/tests/test_treasury_desk.py::test_denied_attempts_cite_expected_rule[DOGE-USD-allowed-products] PASSED [ 40%]
+treasury-desk/tests/test_treasury_desk.py::test_denied_attempts_cite_expected_rule[exfiltration-return-counterparty-allowlist] PASSED [ 46%]
+treasury-desk/tests/test_treasury_desk.py::test_denied_attempts_cite_expected_rule[over return cap-per-return-cap] PASSED [ 53%]
+treasury-desk/tests/test_treasury_desk.py::test_forbidden_op_denied_without_a_business_rule PASSED [ 60%]
+treasury-desk/tests/test_treasury_desk.py::test_approval_gate_then_token PASSED [ 66%]
+treasury-desk/tests/test_treasury_desk.py::test_final_balances_conserved PASSED [ 73%]
+treasury-desk/tests/test_treasury_desk.py::test_only_authorized_edges_touched_the_ledger PASSED [ 80%]
+treasury-desk/tests/test_treasury_desk.py::test_invariants_catch_an_unauthorized_edge PASSED [ 86%]
+treasury-desk/tests/test_treasury_desk.py::test_ledger_blocks_overdraft PASSED [ 93%]
+treasury-desk/tests/test_treasury_desk.py::test_david_client_has_no_treasury_powers PASSED [100%]
+
+============================== 15 passed in 0.12s ==============================
+
+[exit 0]

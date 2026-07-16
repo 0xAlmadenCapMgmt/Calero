@@ -1,0 +1,31 @@
+# stage: judgment
+# proves: alice-bob: intents judged live by the engine; nothing executes.
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python -m pytest alice-bob/tests/ -v
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/jason/Calero/alice-bob/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/jason/Calero
+plugins: anyio-4.12.1
+collecting ... collected 11 items
+
+alice-bob/tests/test_dialogue.py::test_buy_maps_to_create_order PASSED   [  9%]
+alice-bob/tests/test_dialogue.py::test_crypto_ticker_normalized_to_exchange_product PASSED [ 18%]
+alice-bob/tests/test_dialogue.py::test_sell_maps_to_create_order_sell_side PASSED [ 27%]
+alice-bob/tests/test_dialogue.py::test_transfer_maps_to_forbidden_create_transfer PASSED [ 36%]
+alice-bob/tests/test_dialogue.py::test_check_balance_maps_to_get_accounts PASSED [ 45%]
+alice-bob/tests/test_dialogue.py::test_describe_intent_names_the_operation PASSED [ 54%]
+alice-bob/tests/test_dialogue.py::test_stock_buy_denied_by_product_allowlist PASSED [ 63%]
+alice-bob/tests/test_dialogue.py::test_transfer_denied_as_forbidden_operation PASSED [ 72%]
+alice-bob/tests/test_dialogue.py::test_small_btc_buy_allowed PASSED      [ 81%]
+alice-bob/tests/test_dialogue.py::test_midsize_btc_buy_needs_human_approval PASSED [ 90%]
+alice-bob/tests/test_dialogue.py::test_balance_check_allowed PASSED      [100%]
+
+============================== 11 passed in 0.25s ==============================
+
+[exit 0]
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python alice-bob/dialogue.py --turns 2
+[SKIPPED — no ANTHROPIC_API_KEY / anthropic]

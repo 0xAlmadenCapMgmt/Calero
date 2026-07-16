@@ -1,0 +1,111 @@
+# stage: adapters
+# proves: Both adapters + shared derivation; two demos run.
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python -m pytest tests/test_coinbase_adapter.py tests/test_payments_adapter.py -v
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/jason/Calero/alice-bob/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/jason/Calero
+plugins: anyio-4.12.1
+collecting ... collected 23 items
+
+tests/test_coinbase_adapter.py::test_small_buy_allowed PASSED            [  4%]
+tests/test_coinbase_adapter.py::test_product_not_allowed PASSED          [  8%]
+tests/test_coinbase_adapter.py::test_sell_denied PASSED                  [ 13%]
+tests/test_coinbase_adapter.py::test_unparseable_notional_fails_closed PASSED [ 17%]
+tests/test_coinbase_adapter.py::test_per_order_cap PASSED                [ 21%]
+tests/test_coinbase_adapter.py::test_daily_notional_cap PASSED           [ 26%]
+tests/test_coinbase_adapter.py::test_daily_order_count PASSED            [ 30%]
+tests/test_coinbase_adapter.py::test_denied_order_does_not_consume_budget PASSED [ 34%]
+tests/test_coinbase_adapter.py::test_over_threshold_needs_approval PASSED [ 39%]
+tests/test_coinbase_adapter.py::test_valid_token_allows PASSED           [ 43%]
+tests/test_coinbase_adapter.py::test_orders_are_audited PASSED           [ 47%]
+tests/test_payments_adapter.py::test_read_op_allowed PASSED              [ 52%]
+tests/test_payments_adapter.py::test_small_payout_allowed PASSED         [ 56%]
+tests/test_payments_adapter.py::test_non_allowlisted_destination_denied PASSED [ 60%]
+tests/test_payments_adapter.py::test_forbidden_transfer_denied PASSED    [ 65%]
+tests/test_payments_adapter.py::test_per_payout_cap PASSED               [ 69%]
+tests/test_payments_adapter.py::test_cents_scaling PASSED                [ 73%]
+tests/test_payments_adapter.py::test_unparseable_amount_fails_closed PASSED [ 78%]
+tests/test_payments_adapter.py::test_daily_payout_cap PASSED             [ 82%]
+tests/test_payments_adapter.py::test_over_threshold_needs_approval PASSED [ 86%]
+tests/test_payments_adapter.py::test_approved_payout_allows PASSED       [ 91%]
+tests/test_payments_adapter.py::test_refund_within_cap_allowed PASSED    [ 95%]
+tests/test_payments_adapter.py::test_refund_over_cap_denied PASSED       [100%]
+
+============================== 23 passed in 0.07s ==============================
+
+[exit 0]
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python -m adapters.coinbase.demo
+1. Read balance (allowed op):
+  ✅ get_accounts: {'accounts': [{'name': 'BTC Wallet', 'balance': '0.5 BTC'}]}
+
+2. Small BUY within limits:
+  ✅ create_order $5: {'order_id': 'mock-123', 'product_id': 'BTC-USD', 'side': 'BUY', 'quote_size': '5.00'}
+
+3. BUY above per-order cap ($25):
+  ⛔ create_order $50: DENY: rule 'per-order-cap' failed: No single order above $25 [rules: per-order-cap, human-approval-threshold]
+
+4. BUY above approval threshold ($10) without a token:
+  ✋ create_order $15: NEEDS_APPROVAL: rule 'human-approval-threshold' requires human approval (Orders above $10 need a human-minted approval token): approval token missing [rules: human-approval-threshold]
+
+5. Same order WITH a human-minted approval token:
+  ✅ create_order $15 + token: {'order_id': 'mock-123', 'product_id': 'BTC-USD', 'side': 'BUY', 'quote_size': '15.00'}
+
+6. Replaying the SAME token (single-use, now consumed):
+  ⛔ create_order $15 + replayed token: DENY: rule 'human-approval-threshold' requires human approval (Orders above $10 need a human-minted approval token): approval token already used [rules: human-approval-threshold]
+
+7. SELL (side not allowed by the buy-only rule):
+  ⛔ create_order SELL: DENY: rule 'buy-only' failed: Accumulate-only agent; add SELL to permit selling [rules: buy-only]
+
+8. Withdrawal attempt (forbidden op):
+  ⛔ send: DENY: 'send' is forbidden
+
+9. Unknown operation (deny by default):
+  ⛔ delete_everything: DENY: 'delete_everything' not in allowed_operations
+
+Audit trail written to audit.log.jsonl:
+  {"ts": "2026-07-16T05:22:52.307338+00:00", "agent_id": "balance-reporter", "operation": "create_order", "params": {"product_id": "BTC-USD", "side": "SELL", "quote_size": "5.00"}, "verdict": "DENY", "reason": "rule 'buy-only' failed: Accumulate-only agent; add SELL to permit selling", "failed_rules": ["buy-only"]}
+  {"ts": "2026-07-16T05:22:52.307379+00:00", "agent_id": "balance-reporter", "operation": "send", "params": {"to": "0xabc", "amount": "1 BTC"}, "verdict": "DENY", "reason": "'send' is forbidden", "failed_rules": []}
+  {"ts": "2026-07-16T05:22:52.307419+00:00", "agent_id": "balance-reporter", "operation": "delete_everything", "params": {}, "verdict": "DENY", "reason": "'delete_everything' not in allowed_operations", "failed_rules": []}
+
+[exit 0]
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python -m adapters.payments.demo
+1. Read balance (allowed op):
+  ✅ get_balance: {'available_usd': 12000.0}
+
+2. Small payout to an approved vendor ($150):
+  ✅ create_payout $150: {'payout_id': 'po_mock123', 'status': 'paid', 'destination': 'acct_vendor_aws', 'amount': '15000'}
+
+3. Payout to a NON-approved recipient (destination allowlist):
+  ⛔ create_payout stranger: DENY: rule 'allowed-destinations' failed: Payouts only to pre-approved recipients [rules: allowed-destinations]
+
+4. Payout above the per-payout cap ($500):
+  ⛔ create_payout $900: DENY: rule 'per-payout-cap' failed: No single payout above $500 [rules: per-payout-cap, payout-approval-threshold]
+
+5. Payout above the approval threshold ($200) without a token:
+  ✋ create_payout $350: NEEDS_APPROVAL: rule 'payout-approval-threshold' requires human approval (Payouts above $200 need a human-minted approval token): approval token missing [rules: payout-approval-threshold]
+
+6. Same payout WITH a human-minted approval token:
+  ✅ create_payout $350 + token: {'payout_id': 'po_mock123', 'status': 'paid', 'destination': 'acct_payroll', 'amount': '35000'}
+
+7. Raw transfer attempt (forbidden op):
+  ⛔ create_transfer: DENY: 'create_transfer' is forbidden
+
+8. Refund within the per-refund cap ($40):
+  ✅ create_refund $40: {'refund_id': 're_mock123', 'status': 'succeeded', 'charge': 'ch_123', 'amount': '4000'}
+
+9. Refund above the per-refund cap ($100):
+  ⛔ create_refund $250: DENY: rule 'per-refund-cap' failed: No single refund above $100 [rules: per-refund-cap]
+
+Audit trail written to audit.log.jsonl:
+  {"ts": "2026-07-16T05:22:52.344406+00:00", "agent_id": "payouts-agent", "operation": "create_transfer", "params": {"to": "acct_x", "amount": "100"}, "verdict": "DENY", "reason": "'create_transfer' is forbidden", "failed_rules": []}
+  {"ts": "2026-07-16T05:22:52.344469+00:00", "agent_id": "payouts-agent", "operation": "create_refund", "params": {"charge": "ch_123", "amount": "4000"}, "verdict": "ALLOW", "reason": "all checks passed", "failed_rules": []}
+  {"ts": "2026-07-16T05:22:52.344506+00:00", "agent_id": "payouts-agent", "operation": "create_refund", "params": {"charge": "ch_456", "amount": "25000"}, "verdict": "DENY", "reason": "rule 'per-refund-cap' failed: No single refund above $100", "failed_rules": ["per-refund-cap"]}
+
+[exit 0]

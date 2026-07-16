@@ -1,0 +1,33 @@
+# stage: core
+# proves: Generic engine: platform controls, approval-token lifecycle, NullAdapter.
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python -m pytest tests/test_core.py -v
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0 -- /Users/jason/Calero/alice-bob/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/jason/Calero
+plugins: anyio-4.12.1
+collecting ... collected 17 items
+
+tests/test_core.py::test_allowed_op PASSED                               [  5%]
+tests/test_core.py::test_forbidden_op_denied PASSED                      [ 11%]
+tests/test_core.py::test_unknown_op_denied_by_default PASSED             [ 17%]
+tests/test_core.py::test_forbidden_beats_allowed PASSED                  [ 23%]
+tests/test_core.py::test_kill_switch PASSED                              [ 29%]
+tests/test_core.py::test_disabled_policy PASSED                          [ 35%]
+tests/test_core.py::test_rate_limit PASSED                               [ 41%]
+tests/test_core.py::test_params_rule_allows PASSED                       [ 47%]
+tests/test_core.py::test_params_rule_denies PASSED                       [ 52%]
+tests/test_core.py::test_missing_derived_field_fails_closed PASSED       [ 58%]
+tests/test_core.py::test_over_threshold_needs_approval PASSED            [ 64%]
+tests/test_core.py::test_valid_token_allows PASSED                       [ 70%]
+tests/test_core.py::test_token_bound_to_exact_params PASSED              [ 76%]
+tests/test_core.py::test_token_single_use PASSED                         [ 82%]
+tests/test_core.py::test_expired_token PASSED                            [ 88%]
+tests/test_core.py::test_garbage_token_denied PASSED                     [ 94%]
+tests/test_core.py::test_every_evaluation_audited PASSED                 [100%]
+
+============================== 17 passed in 0.03s ==============================
+
+[exit 0]

@@ -1,0 +1,10 @@
+# stage: adversarial
+# proves: Subverted LLM cannot exfiltrate; invariants are the oracle.
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python treasury-desk/adversarial.py --turns 4 --attacker david --audit-dir /Users/jason/Calero/runs/2026-07-16T05-22-51Z/adversarial-audit
+[SKIPPED — no ANTHROPIC_API_KEY / anthropic]
+
+======================================================================
+$ /Users/jason/Calero/alice-bob/.venv/bin/python -m pytest treasury-desk/tests/test_adversarial.py -v
+[SKIPPED — no ANTHROPIC_API_KEY / anthropic]

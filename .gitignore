@@ -7,5 +7,9 @@ __pycache__/
 # Runtime artifacts
 audit.log.jsonl
 
+# Suite run logs (scripts/run_suite.py). Keep only the committed sample.
+/runs/*
+!/runs/sample-run/
+
 # Local tool settings
 .claude/

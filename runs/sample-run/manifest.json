@@ -1,0 +1,104 @@
+{
+  "timestamp": "2026-07-16T05-22-51Z",
+  "python": "/Users/jason/Calero/alice-bob/.venv/bin/python",
+  "have_pkg": true,
+  "have_llm": false,
+  "overall": "PASS",
+  "stages": [
+    {
+      "name": "core",
+      "proves": "Generic engine: platform controls, approval-token lifecycle, NullAdapter.",
+      "status": "PASS",
+      "duration_s": 0.19,
+      "log": "01-core.log",
+      "steps": [
+        {
+          "label": "core tests",
+          "skipped": false,
+          "returncode": 0
+        }
+      ]
+    },
+    {
+      "name": "adapters",
+      "proves": "Both adapters + shared derivation; two demos run.",
+      "status": "PASS",
+      "duration_s": 0.27,
+      "log": "02-adapters.log",
+      "steps": [
+        {
+          "label": "adapter tests",
+          "skipped": false,
+          "returncode": 0
+        },
+        {
+          "label": "coinbase demo",
+          "skipped": false,
+          "returncode": 0
+        },
+        {
+          "label": "payments demo",
+          "skipped": false,
+          "returncode": 0
+        }
+      ]
+    },
+    {
+      "name": "judgment",
+      "proves": "alice-bob: intents judged live by the engine; nothing executes.",
+      "status": "PASS",
+      "duration_s": 0.42,
+      "log": "03-judgment.log",
+      "steps": [
+        {
+          "label": "offline tests",
+          "skipped": false,
+          "returncode": 0
+        },
+        {
+          "label": "live dialogue",
+          "skipped": true,
+          "returncode": null
+        }
+      ]
+    },
+    {
+      "name": "enforcement",
+      "proves": "treasury-desk: governed agents move real funds; invariants hold.",
+      "status": "PASS",
+      "duration_s": 0.3,
+      "log": "04-enforcement.log",
+      "steps": [
+        {
+          "label": "scenario",
+          "skipped": false,
+          "returncode": 0
+        },
+        {
+          "label": "tests",
+          "skipped": false,
+          "returncode": 0
+        }
+      ]
+    },
+    {
+      "name": "adversarial",
+      "proves": "Subverted LLM cannot exfiltrate; invariants are the oracle.",
+      "status": "SKIP",
+      "duration_s": 0.0,
+      "log": "05-adversarial.log",
+      "steps": [
+        {
+          "label": "adversarial run",
+          "skipped": true,
+          "returncode": null
+        },
+        {
+          "label": "property test",
+          "skipped": true,
+          "returncode": null
+        }
+      ]
+    }
+  ]
+}

@@ -90,6 +90,11 @@ Two runnable scenarios show the core governing live agents, at opposite ends of 
 
 - **`alice-bob/` — judgment.** Two Claude personas converse about money; each intent they voice is judged live by the engine, but nothing executes. It shows the layer *deciding*. See [alice-bob/README.md](alice-bob/README.md).
 - **`treasury-desk/` — enforcement.** Two governed agents — **Catherine (Treasury)** funds **David (Fund Manager)**, who invests via a market venue and returns capital — move real balances on a mock ledger. An `ALLOW` mutates the ledger; a battery of adversarial attempts (exfiltration to a stranger, over-cap sends, forbidden ops) is measured pass/fail; and post-run **invariants** prove no funds ever reached an unauthorized counterparty. This is the first scenario to model *agent-to-agent authorization* — David may transact with no one but Catherine, enforced both structurally and by a counterparty-allowlist rule that rides the engine's existing `in` operator with **no core change**. See [treasury-desk/README.md](treasury-desk/README.md).
+  - **Adversarial LLM layer.** `treasury-desk/adversarial.py` promotes Catherine and David to Claude personas whose intents *execute*, with a *subverted* David that tries to divert funds to a stranger. The LLM is the fuzzer; the invariants are the deterministic oracle — no matter what the model attempts, the exfiltration is denied and the invariants hold. Needs an API key; the property test skips without one.
+
+## Running everything, in sequence
+
+[`RUNBOOK.md`](RUNBOOK.md) is the setup + startup guide. `scripts/run_suite.py` runs all components in order — core → adapters → judgment → enforcement → adversarial — and captures each stage's transcript, a `summary.md`, and a `manifest.json` into a timestamped `runs/<ts>/` directory for recall (see the committed [`runs/sample-run/`](runs/sample-run/summary.md)). Deterministic stages always run; the two live-LLM stages gate on `ANTHROPIC_API_KEY` and skip cleanly without it.
 
 ## The core files
 
