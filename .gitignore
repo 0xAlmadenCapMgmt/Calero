@@ -11,5 +11,10 @@ audit.log.jsonl
 /runs/*
 !/runs/sample-run/
 
+# Secrets — never commit API keys or env files
+.env
+.env.*
+*.env
+
 # Local tool settings
 .claude/
