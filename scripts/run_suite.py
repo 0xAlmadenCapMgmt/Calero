@@ -157,16 +157,25 @@ def main() -> None:
     live = "ENABLED" if have_llm else ("no key" if have_pkg else "no anthropic")
     print(f"Calero suite → {run_dir.relative_to(ROOT)}  (live-LLM stages: {live})\n")
     results = []
+    n = len(stages)
     for i, stage in enumerate(stages, 1):
         log_path = run_dir / f"{i:02d}-{stage['name']}.log"
+        live_hint = (" (live model — may take a while)"
+                     if have_llm and any(g == "llm" for _, _, g in stage["steps"]) else "")
+        # Show a running indicator before the (possibly slow) stage starts, then
+        # overwrite it in place with the result once the stage finishes.
+        print(f"  … {stage['name']:<12} [{i}/{n}] running…{live_hint}", end="", flush=True)
         r = run_stage(stage, have_pkg, have_llm, log_path)
         results.append(r)
         mark = {"PASS": "✅", "FAIL": "❌", "SKIP": "⏭️"}.get(r["status"], "?")
-        print(f"  {mark} {stage['name']:<12} {r['status']:<5} {r['duration_s']:>6}s  → {r['log']}")
+        print(f"\r  {mark} {stage['name']:<12} {r['status']:<5} {r['duration_s']:>6}s  "
+              f"→ {r['log']}" + " " * 40)
 
     overall = write_reports(run_dir, ts, py, have_pkg, have_llm, results)
     update_latest(run_dir)
-    print(f"\nOverall: {overall}   logs: {run_dir.relative_to(ROOT)}/  (summary.md, manifest.json)")
+    bar = "─" * 60
+    print(f"\n{bar}\n  DONE — Overall: {overall}"
+          f"\n  Logs: {run_dir.relative_to(ROOT)}/  (open summary.md for the table)\n{bar}")
     sys.exit(1 if overall == "FAIL" else 0)
 
 
