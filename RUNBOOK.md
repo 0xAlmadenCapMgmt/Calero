@@ -14,17 +14,38 @@ skip cleanly, so the whole sequence always completes.
 
 ## 1. Setup
 
+**Already have a `.venv`? Check before installing anything** — you likely don't
+need to install a thing:
+
+```sh
+.venv/bin/python -c "import yaml, pytest, anthropic; print('all set ✓')"
+```
+
+- Prints `all set ✓` → skip the rest of this section; go to step 2.
+- `ModuleNotFoundError: ... anthropic` → only the live stages are missing a dep;
+  run just the `requirements-llm.txt` line below.
+- No `.venv/` directory, or `yaml`/`pytest` missing → do the full first-time
+  install below.
+
+**First-time install (fresh clone only):**
+
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt          # pyyaml, pytest (deterministic core)
+.venv/bin/pip install -r requirements.txt                     # pyyaml, pytest (deterministic core)
+.venv/bin/pip install -r treasury-desk/requirements-llm.txt   # anthropic (enables the two live stages)
+```
 
-# To enable the live stages (judgment dialogue + adversarial layer):
-.venv/bin/pip install -r treasury-desk/requirements-llm.txt   # anthropic
-export ANTHROPIC_API_KEY=sk-...                    # or: ant auth login
+**To run the live stages** (judgment dialogue + adversarial layer) you also need
+a key in your shell — this is *not* installed, it's set per session and left in
+memory only:
+
+```sh
+ export ANTHROPIC_API_KEY=sk-...                   # leading space keeps it out of shell history; or: ant auth login
 ```
 
 One venv with `anthropic` installed runs everything. Without a key, live model
-calls skip; without `anthropic` at all, the judgment offline tests also skip.
+calls skip; without `anthropic` at all, the judgment offline tests also skip —
+the deterministic stages always run either way.
 
 ## 2. Run everything, logged, in sequence
 
